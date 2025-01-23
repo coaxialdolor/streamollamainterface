@@ -9,8 +9,8 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <style>
         :root {
-            --question-color: 209 100% 55%;
-            --answer-color: 162 73% 46%;
+            --question-color: 300 100% 50%;  /* Fuchsia */
+            --answer-color: 162 73% 46%;     /* Turquoise */
             --streaming-color: 190 90% 50%;
         }
 
@@ -22,8 +22,9 @@
         }
         
         .chat-bubble.user {
-            background-color: hsl(var(--question-color));
-            color: white;
+            background-color: hsl(var(--question-color)/0.2);
+            border: 1px solid hsl(var(--question-color)/0.3);
+            color: hsl(0 0% 90%);
         }
         
         .chat-bubble.assistant {
