@@ -9,9 +9,9 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <style>
         :root {
-            --question-color: 209 100% 55%;    /* Blue for user */
-            --answer-color: 162 73% 46%;       /* Turquoise for assistant */
-            --streaming-color: 190 90% 50%;    /* Brighter turquoise for streaming */
+            --question-color: 209 100% 55%;
+            --answer-color: 162 73% 46%;
+            --streaming-color: 190 90% 50%;
         }
 
         .model-header {
@@ -27,8 +27,9 @@
         }
         
         .chat-bubble.assistant {
-            background-color: hsl(var(--answer-color)/0.1);
-            border: 1px solid hsl(var(--answer-color)/0.2);
+            background-color: hsl(var(--answer-color)/0.2);
+            border: 1px solid hsl(var(--answer-color)/0.3);
+            color: hsl(0 0% 90%);
         }
         
         .chat-bubble.streaming {
@@ -42,19 +43,31 @@
             100% { border-color: hsl(var(--streaming-color)/0.3); }
         }
 
+        body {
+            background: hsl(220 15% 16%);
+        }
+
+        #chat-container {
+            background: hsl(220 13% 18%);
+            color: white;
+        }
+
+        .input-bordered {
+            background-color: hsl(220 13% 20%);
+            border-color: hsl(220 13% 30%);
+            color: white;
+        }
+
+        .input::placeholder {
+            color: hsl(220 13% 60%);
+        }
+
         .code-container {
+            background: #1E1E1E !important;
             position: relative;
             margin: 1rem 0;
             border-radius: 0.5rem;
             overflow-x: auto;
-            background: #1E1E1E;
-            font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
-            font-size: 0.9em;
-        }
-
-        .code-content {
-            padding: 1rem;
-            position: relative;
         }
 
         .code-copy-btn {
@@ -62,8 +75,8 @@
             top: 0.5rem;
             right: 0.5rem;
             padding: 0.25rem 0.75rem;
-            background: #3d3d3d;
-            color: white;
+            background: hsl(220 13% 30%);
+            color: hsl(0 0% 90%);
             border-radius: 0.25rem;
             font-size: 0.8rem;
             cursor: pointer;
@@ -79,31 +92,15 @@
         pre[class*="language-"] {
             background: none !important;
             margin: 0 !important;
-            padding: 0 !important;
-        }
-
-        .copy-btn {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .chat-bubble:hover .copy-btn {
-            opacity: 1;
-        }
-
-        body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            padding: 1rem !important;
         }
     </style>
 </head>
-<body class="bg-base-100 h-screen">
+<body class="h-screen">
     <div class="container mx-auto max-w-4xl p-4 h-full flex flex-col">
-        <div class="text-3xl font-bold text-primary mb-8">Ollama Chat</div>
+        <div class="text-3xl font-bold text-[hsl(var(--answer-color))] mb-8">Ollama Chat</div>
         
-        <div id="chat-container" class="flex-1 bg-base-200 rounded-lg p-4 mb-4 overflow-y-auto space-y-4">
+        <div id="chat-container" class="flex-1 rounded-lg p-4 mb-4 overflow-y-auto space-y-4 shadow-lg">
             <!-- Messages will be inserted here -->
         </div>
 
@@ -113,7 +110,7 @@
                     type="text" 
                     id="prompt-input" 
                     placeholder="Type your message..." 
-                    class="join-item input input-bordered w-full"
+                    class="join-item input input-bordered input-ghost w-full text-white"
                     autofocus
                 >
                 <button 
@@ -141,26 +138,35 @@
         const interruptBtn = document.getElementById('interrupt-btn');
         let isGenerating = false;
         let currentBubble = null;
+        let controller = null;
 
-        function createCopyButton(content) {
-            const button = document.createElement('button');
-            button.className = 'copy-btn btn btn-xs btn-ghost';
-            button.innerHTML = '📋';
-            button.addEventListener('click', () => {
-                navigator.clipboard.writeText(content);
-                button.innerHTML = '✅';
-                setTimeout(() => button.innerHTML = '📋', 2000);
-            });
-            return button;
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function unescapeHtml(safe) {
+            return safe
+                .replace(/&amp;/g, "&")
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .replace(/&quot;/g, '"')
+                .replace(/&#039;/g, "'");
         }
 
         function formatCodeBlocks(text) {
-            return text.replace(/```(\w+)?\s*([\s\S]*?)```/g, (match, lang, code) => {
+            return text.replace(/```([\w-]+)?\s*([\s\S]*?)```/gs, (match, lang, code) => {
                 const language = lang || 'text';
+                const escapedCode = escapeHtml(code.trim());
+                
                 return `<div class="code-container">
                     <div class="code-content">
-                        <pre class="language-${language}"><code>${code.trim()}</code></pre>
-                        <button class="code-copy-btn" onclick="navigator.clipboard.writeText('${code.trim().replace(/'/g, "\\'")}')">📋 Copy</button>
+                        <pre class="language-${language}"><code class="language-${language}">${escapedCode}</code></pre>
+                        <button class="code-copy-btn">📋 Copy</button>
                     </div>
                 </div>`;
             });
@@ -182,15 +188,27 @@
                 `;
                 currentBubble = contentDiv;
             } else {
-                contentDiv.innerHTML = content.replace(/\n/g, '<br>');
+                contentDiv.textContent = content;
             }
 
-            contentDiv.appendChild(createCopyButton(content));
             messageDiv.appendChild(contentDiv);
             chatContainer.appendChild(messageDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-            
+
+            // Add copy functionality to code blocks
+            const copyButtons = contentDiv.querySelectorAll('.code-copy-btn');
+            copyButtons.forEach(button => {
+                const codeElement = button.previousElementSibling.querySelector('code');
+                button.addEventListener('click', () => {
+                    const rawCode = unescapeHtml(codeElement.textContent);
+                    navigator.clipboard.writeText(rawCode);
+                    button.textContent = '✅ Copied!';
+                    setTimeout(() => button.textContent = '📋 Copy', 2000);
+                });
+            });
+
+            // Highlight code blocks
             Prism.highlightAllUnder(contentDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
         async function handleSend() {
@@ -203,6 +221,7 @@
             promptInput.value = '';
             sendBtn.disabled = true;
             interruptBtn.disabled = false;
+            controller = new AbortController();
             
             appendMessage(prompt, true);
             appendMessage('', false);
@@ -211,65 +230,87 @@
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt })
+                    body: JSON.stringify({ prompt }),
+                    signal: controller.signal
                 });
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
+                let buffer = '';
                 let assistantMessage = '';
-
-                chatContainer.lastChild.remove();
-                appendMessage('', false);
-                currentBubble.classList.add('streaming');
 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
                     
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n\n').filter(line => line.startsWith('data: '));
+                    buffer += decoder.decode(value, { stream: true });
                     
-                    for (const line of lines) {
+                    // Process complete chunks
+                    const chunks = buffer.split('\n\n');
+                    buffer = chunks.pop() || '';
+
+                    for (const chunk of chunks) {
                         try {
-                            const data = JSON.parse(line.replace('data: ', ''));
+                            const data = JSON.parse(chunk.replace('data: ', ''));
                             assistantMessage += data.response;
                             
-                            currentBubble.innerHTML = `
-                                <div class="model-header">deepseek-r1:14b says:</div>
-                                ${formatCodeBlocks(assistantMessage)}
-                            `;
-                            currentBubble.appendChild(createCopyButton(assistantMessage));
-                            Prism.highlightAllUnder(currentBubble);
+                            // Batch updates for better performance
+                            requestAnimationFrame(() => {
+                                currentBubble.innerHTML = `
+                                    <div class="model-header">deepseek-r1:14b says:</div>
+                                    ${formatCodeBlocks(assistantMessage)}
+                                `;
+                                
+                                // Re-attach copy handlers
+                                const copyButtons = currentBubble.querySelectorAll('.code-copy-btn');
+                                copyButtons.forEach(button => {
+                                    const codeElement = button.previousElementSibling.querySelector('code');
+                                    button.addEventListener('click', () => {
+                                        const rawCode = unescapeHtml(codeElement.textContent);
+                                        navigator.clipboard.writeText(rawCode);
+                                        button.textContent = '✅ Copied!';
+                                        setTimeout(() => button.textContent = '📋 Copy', 2000);
+                                    });
+                                });
+
+                                Prism.highlightAllUnder(currentBubble);
+                            });
                         } catch (e) {
                             console.error('Error parsing chunk:', e);
                         }
                     }
                 }
-                
-                currentBubble.classList.remove('streaming');
+
+                // Process remaining buffer
+                if (buffer.trim()) {
+                    assistantMessage += buffer;
+                    currentBubble.innerHTML = `
+                        <div class="model-header">deepseek-r1:14b says:</div>
+                        ${formatCodeBlocks(assistantMessage)}
+                    `;
+                    Prism.highlightAllUnder(currentBubble);
+                }
+
             } catch (error) {
-                console.error('Error:', error);
+                if (error.name !== 'AbortError') {
+                    console.error('Error:', error);
+                }
             } finally {
                 isGenerating = false;
                 sendBtn.disabled = false;
                 interruptBtn.disabled = true;
+                controller = null;
                 promptInput.focus();
             }
         }
 
-        async function handleInterrupt() {
-            if (!isGenerating) return;
-            
-            try {
-                await fetch('/interrupt', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                if (currentBubble) {
-                    currentBubble.classList.remove('streaming');
-                }
-            } catch (error) {
-                console.error('Error interrupting:', error);
+        function handleInterrupt() {
+            if (controller) {
+                controller.abort();
+                currentBubble.classList.remove('streaming');
+                isGenerating = false;
+                sendBtn.disabled = false;
+                interruptBtn.disabled = true;
             }
         }
 
