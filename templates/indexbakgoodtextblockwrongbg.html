@@ -9,9 +9,9 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <style>
         :root {
-            --question-color: 209 100% 55%;    /* Blue for user */
-            --answer-color: 162 73% 46%;       /* Turquoise for assistant */
-            --streaming-color: 190 90% 50%;    /* Brighter turquoise for streaming */
+            --question-color: 209 100% 55%;
+            --answer-color: 162 73% 46%;
+            --streaming-color: 190 90% 50%;
         }
 
         .model-header {
@@ -27,8 +27,9 @@
         }
         
         .chat-bubble.assistant {
-            background-color: hsl(var(--answer-color)/0.1);
-            border: 1px solid hsl(var(--answer-color)/0.2);
+            background-color: hsl(var(--answer-color)/0.2);
+            border: 1px solid hsl(var(--answer-color)/0.3);
+            color: hsl(0 0% 90%);
         }
         
         .chat-bubble.streaming {
@@ -42,68 +43,44 @@
             100% { border-color: hsl(var(--streaming-color)/0.3); }
         }
 
-        .code-container {
-            position: relative;
-            margin: 1rem 0;
-            border-radius: 0.5rem;
-            overflow-x: auto;
-            background: #1E1E1E;
-            font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
-            font-size: 0.9em;
+        body {
+            background: hsl(220 15% 16%);
         }
 
-        .code-content {
-            padding: 1rem;
-            position: relative;
+        #chat-container {
+            background: hsl(220 13% 18%);
+            color: white;
+        }
+
+        .input-bordered {
+            background-color: hsl(220 13% 20%);
+            border-color: hsl(220 13% 30%);
+            color: white;
+        }
+
+        .input::placeholder {
+            color: hsl(220 13% 60%);
+        }
+
+        .code-container {
+            background: #1E1E1E !important;
         }
 
         .code-copy-btn {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            padding: 0.25rem 0.75rem;
-            background: #3d3d3d;
-            color: white;
-            border-radius: 0.25rem;
-            font-size: 0.8rem;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.2s;
-            z-index: 10;
-        }
-
-        .code-container:hover .code-copy-btn {
-            opacity: 1;
-        }
-
-        pre[class*="language-"] {
-            background: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
+            background: hsl(220 13% 30%);
+            color: hsl(0 0% 90%);
         }
 
         .copy-btn {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .chat-bubble:hover .copy-btn {
-            opacity: 1;
-        }
-
-        body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            color: hsl(0 0% 90%);
         }
     </style>
 </head>
-<body class="bg-base-100 h-screen">
+<body class="h-screen">
     <div class="container mx-auto max-w-4xl p-4 h-full flex flex-col">
-        <div class="text-3xl font-bold text-primary mb-8">Ollama Chat</div>
+        <div class="text-3xl font-bold text-[hsl(var(--answer-color))] mb-8">Ollama Chat</div>
         
-        <div id="chat-container" class="flex-1 bg-base-200 rounded-lg p-4 mb-4 overflow-y-auto space-y-4">
+        <div id="chat-container" class="flex-1 rounded-lg p-4 mb-4 overflow-y-auto space-y-4 shadow-lg">
             <!-- Messages will be inserted here -->
         </div>
 
@@ -113,7 +90,7 @@
                     type="text" 
                     id="prompt-input" 
                     placeholder="Type your message..." 
-                    class="join-item input input-bordered w-full"
+                    class="join-item input input-bordered input-ghost w-full text-white"
                     autofocus
                 >
                 <button 
@@ -155,12 +132,18 @@
         }
 
         function formatCodeBlocks(text) {
-            return text.replace(/```(\w+)?\s*([\s\S]*?)```/g, (match, lang, code) => {
+            return text.replace(/```(\w*)\s*([\s\S]*?)```/g, (match, lang, code) => {
                 const language = lang || 'text';
+                const escapedCode = code.trim()
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+
                 return `<div class="code-container">
                     <div class="code-content">
-                        <pre class="language-${language}"><code>${code.trim()}</code></pre>
-                        <button class="code-copy-btn" onclick="navigator.clipboard.writeText('${code.trim().replace(/'/g, "\\'")}')">📋 Copy</button>
+                        <pre class="language-${language}"><code>${escapedCode}</code></pre>
+                        <button class="code-copy-btn">📋 Copy</button>
                     </div>
                 </div>`;
             });
@@ -189,7 +172,17 @@
             messageDiv.appendChild(contentDiv);
             chatContainer.appendChild(messageDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
-            
+
+            // Add copy functionality to code blocks
+            contentDiv.querySelectorAll('.code-copy-btn').forEach(button => {
+                const code = button.parentElement.querySelector('code').textContent;
+                button.addEventListener('click', () => {
+                    navigator.clipboard.writeText(code);
+                    button.textContent = '✅ Copied!';
+                    setTimeout(() => button.textContent = '📋 Copy', 2000);
+                });
+            });
+
             Prism.highlightAllUnder(contentDiv);
         }
 
