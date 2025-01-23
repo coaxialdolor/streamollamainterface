@@ -9,8 +9,8 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <style>
         :root {
-            --question-color: 300 100% 50%;  /* Fuchsia */
-            --answer-color: 162 73% 46%;     /* Turquoise */
+            --question-color: 300 100% 50%;
+            --answer-color: 162 73% 46%;
             --streaming-color: 190 90% 50%;
         }
 
@@ -34,7 +34,7 @@
         }
         
         .chat-bubble.streaming {
-            border: 2px solid hsl(var(--streaming-color)/0.5);
+            border: 2px solid hsl(var(--streaming-color)/0.5) !important;
             animation: pulse-border 1.5s infinite;
         }
 
@@ -94,6 +94,60 @@
             background: none !important;
             margin: 0 !important;
             padding: 1rem !important;
+        }
+
+        .md-content {
+            line-height: 1.6;
+            font-size: 1rem;
+        }
+
+        .md-content h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 1rem 0 0.5rem;
+            color: hsl(var(--answer-color));
+        }
+
+        .md-content p {
+            margin: 0.75rem 0;
+        }
+
+        .md-content ul, .md-content ol {
+            margin: 1rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .md-content ul {
+            list-style-type: disc;
+        }
+
+        .md-content ol {
+            list-style-type: decimal;
+        }
+
+        .md-content li {
+            margin: 0.5rem 0;
+        }
+
+        .md-content strong {
+            font-weight: 600;
+            color: hsl(var(--answer-color));
+        }
+
+        .md-content em {
+            font-style: italic;
+        }
+
+        .md-content a {
+            color: hsl(209 100% 55%);
+            text-decoration: underline;
+        }
+
+        .md-content code:not([class*="language-"]) {
+            background: hsl(220 13% 25%);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
         }
     </style>
 </head>
@@ -159,18 +213,40 @@
                 .replace(/&#039;/g, "'");
         }
 
-        function formatCodeBlocks(text) {
-            return text.replace(/```([\w-]+)?\s*([\s\S]*?)```/gs, (match, lang, code) => {
-                const language = lang || 'text';
-                const escapedCode = escapeHtml(code.trim());
-                
-                return `<div class="code-container">
-                    <div class="code-content">
-                        <pre class="language-${language}"><code class="language-${language}">${escapedCode}</code></pre>
-                        <button class="code-copy-btn">📋 Copy</button>
-                    </div>
-                </div>`;
-            });
+        function formatMarkdown(text) {
+            return text
+                .replace(/### (.*)/g, '<h3>$1</h3>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/`([^`]+)`/g, '<code>$1</code>')
+                .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
+                .replace(/^(\d+\.|\-)\s+(.*)/gm, '<li>$2</li>')
+                .replace(/<li>.*<\/li>/gs, match => `<ul>${match}</ul>`)
+                .replace(/\n{2,}/g, '</p><p>')
+                .replace(/(<p>.*?<\/p>|^[^<]+)/g, '<p>$1</p>')
+                .replace(/<\/p><p>/g, '</p><p>');
+        }
+
+        function formatMessage(content) {
+            let parts = content.split(/(```[\s\S]*?```)/g);
+            
+            return parts.map(part => {
+                if (part.startsWith('```')) {
+                    const match = part.match(/```(\w+)?\s*([\s\S]*?)```/);
+                    const lang = match[1] || 'text';
+                    const code = match[2].trim();
+                    const escapedCode = escapeHtml(code);
+                    
+                    return `<div class="code-container">
+                        <div class="code-content">
+                            <pre class="language-${lang}"><code class="language-${lang}">${escapedCode}</code></pre>
+                            <button class="code-copy-btn">📋 Copy</button>
+                        </div>
+                    </div>`;
+                } else {
+                    return `<div class="md-content">${formatMarkdown(part)}</div>`;
+                }
+            }).join('');
         }
 
         function appendMessage(content, isUser = false) {
@@ -185,7 +261,7 @@
             if (!isUser) {
                 contentDiv.innerHTML = `
                     <div class="model-header">deepseek-r1:14b says:</div>
-                    ${formatCodeBlocks(content)}
+                    ${formatMessage(content)}
                 `;
                 currentBubble = contentDiv;
             } else {
@@ -195,7 +271,6 @@
             messageDiv.appendChild(contentDiv);
             chatContainer.appendChild(messageDiv);
 
-            // Add copy functionality to code blocks
             const copyButtons = contentDiv.querySelectorAll('.code-copy-btn');
             copyButtons.forEach(button => {
                 const codeElement = button.previousElementSibling.querySelector('code');
@@ -207,7 +282,6 @@
                 });
             });
 
-            // Highlight code blocks
             Prism.highlightAllUnder(contentDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
@@ -226,6 +300,7 @@
             
             appendMessage(prompt, true);
             appendMessage('', false);
+            currentBubble.classList.add('streaming');
 
             try {
                 const response = await fetch('/chat', {
@@ -246,7 +321,6 @@
                     
                     buffer += decoder.decode(value, { stream: true });
                     
-                    // Process complete chunks
                     const chunks = buffer.split('\n\n');
                     buffer = chunks.pop() || '';
 
@@ -255,14 +329,13 @@
                             const data = JSON.parse(chunk.replace('data: ', ''));
                             assistantMessage += data.response;
                             
-                            // Batch updates for better performance
                             requestAnimationFrame(() => {
                                 currentBubble.innerHTML = `
                                     <div class="model-header">deepseek-r1:14b says:</div>
-                                    ${formatCodeBlocks(assistantMessage)}
+                                    ${formatMessage(assistantMessage)}
                                 `;
+                                currentBubble.classList.add('streaming');
                                 
-                                // Re-attach copy handlers
                                 const copyButtons = currentBubble.querySelectorAll('.code-copy-btn');
                                 copyButtons.forEach(button => {
                                     const codeElement = button.previousElementSibling.querySelector('code');
@@ -282,12 +355,11 @@
                     }
                 }
 
-                // Process remaining buffer
                 if (buffer.trim()) {
                     assistantMessage += buffer;
                     currentBubble.innerHTML = `
                         <div class="model-header">deepseek-r1:14b says:</div>
-                        ${formatCodeBlocks(assistantMessage)}
+                        ${formatMessage(assistantMessage)}
                     `;
                     Prism.highlightAllUnder(currentBubble);
                 }
@@ -302,6 +374,7 @@
                 interruptBtn.disabled = true;
                 controller = null;
                 promptInput.focus();
+                currentBubble.classList.remove('streaming');
             }
         }
 
