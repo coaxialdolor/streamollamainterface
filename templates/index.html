@@ -259,7 +259,6 @@
             <div class="text-3xl font-bold text-[hsl(var(--answer-color))] mb-8">Local streaming chat</div>
             
             <div id="chat-container" class="flex-1 rounded-lg p-4 overflow-y-auto space-y-4 shadow-lg pb-[calc(7rem+env(safe-area-inset-bottom))]"></div>
-
             <div class="flex gap-2 sticky bottom-0 bg-[hsl(220_13%_18%)] pt-4 pb-[env(safe-area-inset-bottom)]">
                 <div class="join flex-1">
                     <textarea 
@@ -270,8 +269,8 @@
                         rows="1"
                     ></textarea>
                     <button id="send-btn" class="join-item btn btn-primary">Send</button>
+                    <button id="interrupt-btn" class="join-item btn btn-error hidden">Stop</button>
                 </div>
-                <button id="interrupt-btn" class="btn btn-error" disabled>Stop</button>
             </div>
         </div>
     </div>
@@ -475,9 +474,10 @@
                 animationInterval = null;
             }
         }
-
         function cleanupAfterGeneration() {
             isGenerating = false;
+            sendBtn.classList.remove('hidden');
+            interruptBtn.classList.add('hidden');
             sendBtn.disabled = false;
             interruptBtn.disabled = true;
             controller = null;
@@ -485,19 +485,22 @@
             currentBubble?.classList.remove('streaming');
             stopTypingAnimation();
         }
+        
 
         async function handleSend() {
             if (isGenerating) return;
-            
+    
             const prompt = promptInput.value.trim();
             if (!prompt) return;
 
             isGenerating = true;
             promptInput.value = '';
+            sendBtn.classList.add('hidden');
+            interruptBtn.classList.remove('hidden');
             sendBtn.disabled = true;
             interruptBtn.disabled = false;
             controller = new AbortController();
-            
+    
             if (!isFirstInteraction) {
                 appendMessage(prompt, true);
             }
@@ -521,7 +524,7 @@
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-                    
+            
                     buffer += decoder.decode(value, { stream: true });
                     const chunks = buffer.split('\n\n');
                     buffer = chunks.pop() || '';
@@ -550,7 +553,6 @@
                 isFirstInteraction = false;
             }
         }
-
         function handleInterrupt() {
             stopTypingAnimation();
             if (controller) {
