@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Chat</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.9.4/dist/full.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        :root {
+            --question-color: 300 100% 50%;
+            --answer-color: 162 73% 46%;
+            --streaming-color: 190 90% 50%;
+        }
+
+        .model-header {
+            color: hsl(var(--answer-color));
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+        }
+        
+        .chat-bubble.user {
+            background-color: hsl(var(--question-color)/0.2);
+            border: 1px solid hsl(var(--question-color)/0.3);
+            color: hsl(0 0% 90%);
+        }
+        
+        .chat-bubble.assistant {
+            background-color: hsl(var(--answer-color)/0.2);
+            border: 1px solid hsl(var(--answer-color)/0.3);
+            color: hsl(0 0% 90%);
+        }
+        
+        .chat-bubble.streaming {
+            border: 2px solid hsl(var(--streaming-color)/0.5) !important;
+            animation: pulse-border 1.5s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: hsl(var(--streaming-color)/0.3); }
+            50% { border-color: hsl(var(--streaming-color)/0.8); }
+            100% { border-color: hsl(var(--streaming-color)/0.3); }
+        }
+
+        body {
+            background: hsl(220 15% 16%);
+        }
+
+        #chat-container {
+            background: hsl(220 13% 18%);
+            color: white;
+        }
+
+        .input-bordered {
+            background-color: hsl(220 13% 20%);
+            border-color: hsl(220 13% 30%);
+            color: white;
+        }
+
+        .input::placeholder {
+            color: hsl(220 13% 60%);
+        }
+
+        .code-container {
+            background: #1E1E1E !important;
+            position: relative;
+            margin: 1rem 0;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+        }
+
+        .code-copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            background: hsl(220 13% 30%);
+            color: hsl(0 0% 90%);
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+
+        .code-container:hover .code-copy-btn {
+            opacity: 1;
+        }
+
+        pre[class*="language-"] {
+            background: none !important;
+            margin: 0 !important;
+            padding: 1rem !important;
+        }
+
+        .md-content {
+            line-height: 1.6;
+            font-size: 1rem;
+        }
+
+        .md-content h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 1rem 0 0.5rem;
+            color: hsl(var(--answer-color));
+        }
+
+        .md-content p {
+            margin: 0.75rem 0;
+        }
+
+        .md-content ul, .md-content ol {
+            margin: 1rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .md-content ul {
+            list-style-type: disc;
+        }
+
+        .md-content ol {
+            list-style-type: decimal;
+        }
+
+        .md-content li {
+            margin: 0.5rem 0;
+        }
+
+        .md-content strong {
+            font-weight: 600;
+            color: hsl(var(--answer-color));
+        }
+
+        .md-content em {
+            font-style: italic;
+        }
+
+        .md-content a {
+            color: hsl(209 100% 55%);
+            text-decoration: underline;
+        }
+
+        .md-content code:not([class*="language-"]) {
+            background: hsl(220 13% 25%);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body class="h-screen">
+    <div class="container mx-auto max-w-4xl p-4 h-full flex flex-col">
+        <div class="text-3xl font-bold text-[hsl(var(--answer-color))] mb-8">Ollama Chat</div>
+        
+        <div id="chat-container" class="flex-1 rounded-lg p-4 mb-4 overflow-y-auto space-y-4 shadow-lg">
+            <!-- Messages will be inserted here -->
+        </div>
+
+        <div class="flex gap-2">
+            <div class="join flex-1">
+                <input 
+                    type="text" 
+                    id="prompt-input" 
+                    placeholder="Type your message..." 
+                    class="join-item input input-bordered input-ghost w-full text-white"
+                    autofocus
+                >
+                <button 
+                    id="send-btn" 
+                    class="join-item btn btn-primary"
+                >
+                    Send
+                </button>
+            </div>
+            <button 
+                id="interrupt-btn" 
+                class="btn btn-error"
+                disabled
+            >
+                Stop
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const promptInput = document.getElementById('prompt-input');
+        const sendBtn = document.getElementById('send-btn');
+        const interruptBtn = document.getElementById('interrupt-btn');
+        let isGenerating = false;
+        let currentBubble = null;
+        let controller = null;
+
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function unescapeHtml(safe) {
+            return safe
+                .replace(/&amp;/g, "&")
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .replace(/&quot;/g, '"')
+                .replace(/&#039;/g, "'");
+        }
+
+        function formatMarkdown(text) {
+            return text
+                .replace(/### (.*)/g, '<h3>$1</h3>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/`([^`]+)`/g, '<code>$1</code>')
+                .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
+                .replace(/^(\d+\.|\-)\s+(.*)/gm, '<li>$2</li>')
+                .replace(/<li>.*<\/li>/gs, match => `<ul>${match}</ul>`)
+                .replace(/\n{2,}/g, '</p><p>')
+                .replace(/(<p>.*?<\/p>|^[^<]+)/g, '<p>$1</p>')
+                .replace(/<\/p><p>/g, '</p><p>');
+        }
+
+        function formatMessage(content) {
+            let parts = content.split(/(```[\s\S]*?```)/g);
+            
+            return parts.map(part => {
+                if (part.startsWith('```')) {
+                    const match = part.match(/```(\w+)?\s*([\s\S]*?)```/);
+                    const lang = match[1] || 'text';
+                    const code = match[2].trim();
+                    const escapedCode = escapeHtml(code);
+                    
+                    return `<div class="code-container">
+                        <div class="code-content">
+                            <pre class="language-${lang}"><code class="language-${lang}">${escapedCode}</code></pre>
+                            <button class="code-copy-btn">📋 Copy</button>
+                        </div>
+                    </div>`;
+                } else {
+                    return `<div class="md-content">${formatMarkdown(part)}</div>`;
+                }
+            }).join('');
+        }
+
+        function appendMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = `chat-bubble relative ${
+                isUser ? 'user' : 'assistant'
+            } p-4 rounded-xl max-w-[85%]`;
+            
+            if (!isUser) {
+                contentDiv.innerHTML = `
+                    <div class="model-header">deepseek-r1:14b says:</div>
+                    ${formatMessage(content)}
+                `;
+                currentBubble = contentDiv;
+            } else {
+                contentDiv.textContent = content;
+            }
+
+            messageDiv.appendChild(contentDiv);
+            chatContainer.appendChild(messageDiv);
+
+            const copyButtons = contentDiv.querySelectorAll('.code-copy-btn');
+            copyButtons.forEach(button => {
+                const codeElement = button.previousElementSibling.querySelector('code');
+                button.addEventListener('click', () => {
+                    const rawCode = unescapeHtml(codeElement.textContent);
+                    navigator.clipboard.writeText(rawCode);
+                    button.textContent = '✅ Copied!';
+                    setTimeout(() => button.textContent = '📋 Copy', 2000);
+                });
+            });
+
+            Prism.highlightAllUnder(contentDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function handleSend() {
+            if (isGenerating) return;
+            
+            const prompt = promptInput.value.trim();
+            if (!prompt) return;
+
+            isGenerating = true;
+            promptInput.value = '';
+            sendBtn.disabled = true;
+            interruptBtn.disabled = false;
+            controller = new AbortController();
+            
+            appendMessage(prompt, true);
+            appendMessage('', false);
+            currentBubble.classList.add('streaming');
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt }),
+                    signal: controller.signal
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let assistantMessage = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    const chunks = buffer.split('\n\n');
+                    buffer = chunks.pop() || '';
+
+                    for (const chunk of chunks) {
+                        try {
+                            const data = JSON.parse(chunk.replace('data: ', ''));
+                            assistantMessage += data.response;
+                            
+                            requestAnimationFrame(() => {
+                                currentBubble.innerHTML = `
+                                    <div class="model-header">deepseek-r1:14b says:</div>
+                                    ${formatMessage(assistantMessage)}
+                                `;
+                                currentBubble.classList.add('streaming');
+                                
+                                const copyButtons = currentBubble.querySelectorAll('.code-copy-btn');
+                                copyButtons.forEach(button => {
+                                    const codeElement = button.previousElementSibling.querySelector('code');
+                                    button.addEventListener('click', () => {
+                                        const rawCode = unescapeHtml(codeElement.textContent);
+                                        navigator.clipboard.writeText(rawCode);
+                                        button.textContent = '✅ Copied!';
+                                        setTimeout(() => button.textContent = '📋 Copy', 2000);
+                                    });
+                                });
+
+                                Prism.highlightAllUnder(currentBubble);
+                            });
+                        } catch (e) {
+                            console.error('Error parsing chunk:', e);
+                        }
+                    }
+                }
+
+                if (buffer.trim()) {
+                    assistantMessage += buffer;
+                    currentBubble.innerHTML = `
+                        <div class="model-header">deepseek-r1:14b says:</div>
+                        ${formatMessage(assistantMessage)}
+                    `;
+                    Prism.highlightAllUnder(currentBubble);
+                }
+
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('Error:', error);
+                }
+            } finally {
+                isGenerating = false;
+                sendBtn.disabled = false;
+                interruptBtn.disabled = true;
+                controller = null;
+                promptInput.focus();
+                currentBubble.classList.remove('streaming');
+            }
+        }
+
+        function handleInterrupt() {
+            if (controller) {
+                controller.abort();
+                currentBubble.classList.remove('streaming');
+                isGenerating = false;
+                sendBtn.disabled = false;
+                interruptBtn.disabled = true;
+            }
+        }
+
+        sendBtn.addEventListener('click', handleSend);
+        interruptBtn.addEventListener('click', handleInterrupt);
+        promptInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+            }
+        });
+    </script>
+</body>
+</html>
