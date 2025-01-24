@@ -6,9 +6,10 @@
     <title>Ollama Chat</title>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@3.9.4/dist/full.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
-        /* All previous CSS remains unchanged */
         :root {
             --question-color: 300 100% 50%;
             --answer-color: 162 73% 46%;
@@ -110,20 +111,22 @@
             color: white;
         }
 
-        .input-bordered {
+        .textarea-bordered {
             background-color: hsl(220 13% 20%);
             border-color: hsl(220 13% 30%);
             color: white !important;
             -webkit-text-fill-color: white !important;
         }
 
-        .input::placeholder {
+        .textarea::placeholder {
             color: hsl(220 13% 60%);
         }
 
-        .input-bordered:-webkit-autofill {
-            -webkit-text-fill-color: white !important;
-            -webkit-box-shadow: 0 0 0px 1000px hsl(220 13% 20%) inset;
+        #prompt-input {
+            min-height: 3rem;
+            max-height: 15rem;
+            overflow-y: auto;
+            transition: height 0.2s;
         }
 
         .code-container {
@@ -153,10 +156,17 @@
             opacity: 1;
         }
 
-        pre[class*="language-"] {
-            background: none !important;
+        .code-container pre[class*="language-"] {
             margin: 0 !important;
-            padding: 1rem !important;
+            padding: 1.5rem !important;
+            background: transparent !important;
+        }
+        
+        .code-container code[class*="language-"] {
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.9em;
+            line-height: 1.5;
+            white-space: pre-wrap;
         }
 
         .md-content {
@@ -212,39 +222,40 @@
             border-radius: 0.25rem;
             font-family: monospace;
         }
+
+        .math-display {
+            padding: 1rem;
+            margin: 1rem 0;
+            background: hsl(220 13% 22%);
+            border-radius: 0.5rem;
+            overflow-x: auto;
+        }
+        
+        .math-inline {
+            background: hsl(220 13% 25%);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+        }
     </style>
 </head>
 <body class="h-screen">
     <div class="container mx-auto max-w-4xl p-4 h-full flex flex-col">
         <div class="text-3xl font-bold text-[hsl(var(--answer-color))] mb-8">Ollama Chat</div>
         
-        <div id="chat-container" class="flex-1 rounded-lg p-4 mb-4 overflow-y-auto space-y-4 shadow-lg">
-            <!-- Messages will be inserted here -->
-        </div>
+        <div id="chat-container" class="flex-1 rounded-lg p-4 mb-4 overflow-y-auto space-y-4 shadow-lg"></div>
 
         <div class="flex gap-2">
             <div class="join flex-1">
-                <input 
-                    type="text" 
+                <textarea 
                     id="prompt-input" 
                     placeholder="Type your message..." 
-                    class="join-item input input-bordered input-ghost w-full text-white"
+                    class="join-item textarea textarea-bordered textarea-ghost w-full text-white resize-none"
                     autofocus
-                >
-                <button 
-                    id="send-btn" 
-                    class="join-item btn btn-primary"
-                >
-                    Send
-                </button>
+                    rows="1"
+                ></textarea>
+                <button id="send-btn" class="join-item btn btn-primary">Send</button>
             </div>
-            <button 
-                id="interrupt-btn" 
-                class="btn btn-error"
-                disabled
-            >
-                Stop
-            </button>
+            <button id="interrupt-btn" class="btn btn-error" disabled>Stop</button>
         </div>
     </div>
 
@@ -307,6 +318,7 @@
                 }
 
                 finalizeMessage(assistantMessage + buffer);
+                renderLaTeX(currentBubble);
 
             } catch (error) {
                 if (error.name !== 'AbortError') {
@@ -324,11 +336,8 @@
             messageDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
             
             const contentDiv = document.createElement('div');
-            contentDiv.className = `chat-bubble relative ${
-                isUser ? 'user' : 'assistant'
-            } p-4 rounded-xl max-w-[85%]`;
+            contentDiv.className = `chat-bubble relative ${isUser ? 'user' : 'assistant'} p-4 rounded-xl max-w-[85%]`;
 
-            // Copy button
             const bubbleCopyBtn = document.createElement('button');
             bubbleCopyBtn.className = 'bubble-copy-btn';
             bubbleCopyBtn.innerHTML = '📋 Copy';
@@ -342,7 +351,6 @@
                 });
             };
 
-            // "See question" button
             let seeQuestionBtn = null;
             if (!isUser) {
                 seeQuestionBtn = document.createElement('button');
@@ -356,7 +364,6 @@
                 };
             }
 
-            // Content container
             const contentWrapper = document.createElement('div');
             contentWrapper.className = 'message-content';
             
@@ -379,19 +386,21 @@
                 contentWrapper.textContent = content;
             }
 
-            // Assemble elements
             contentDiv.appendChild(contentWrapper);
             contentDiv.appendChild(bubbleCopyBtn);
             if (seeQuestionBtn) contentDiv.appendChild(seeQuestionBtn);
             messageDiv.appendChild(contentDiv);
             chatContainer.appendChild(messageDiv);
 
-            // Handle code blocks
             if (!isUser) {
                 handleCodeCopyButtons(contentDiv);
+                renderLaTeX(contentDiv);
             }
 
-            Prism.highlightAllUnder(contentDiv);
+            setTimeout(() => {
+                Prism.highlightAllUnder(contentDiv);
+                renderLaTeX(contentDiv);
+            }, 0);
             chatContainer.scrollTop = chatContainer.scrollHeight;
             
             return messageDiv;
@@ -411,6 +420,7 @@
                 `;
                 startTypingAnimation(contentWrapper.querySelector('.typing-dots'));
                 Prism.highlightAllUnder(currentBubble);
+                renderLaTeX(currentBubble);
             }
         }
 
@@ -422,6 +432,7 @@
                     ${formatMessage(content)}
                 `;
                 Prism.highlightAllUnder(currentBubble);
+                renderLaTeX(currentBubble);
             }
         }
 
@@ -511,6 +522,7 @@
                 }
 
                 finalizeMessage(assistantMessage + buffer);
+                renderLaTeX(currentBubble);
 
             } catch (error) {
                 if (error.name !== 'AbortError') {
@@ -534,7 +546,6 @@
             }
         }
 
-        // Helper functions
         function escapeHtml(unsafe) {
             return unsafe
                 .replace(/&/g, "&amp;")
@@ -570,12 +581,25 @@
         function formatMessage(content) {
             let parts = [];
             let currentIndex = 0;
-            let codeBlockRegex = /```/g;
+            let codeBlockRegex = /```|\\\(|\\\[/g;
             let match;
 
             while ((match = codeBlockRegex.exec(content)) !== null) {
                 if (match.index > currentIndex) {
                     parts.push(content.slice(currentIndex, match.index));
+                }
+                
+                if (match[0] === '\\(' || match[0] === '\\[') {
+                    const endChar = match[0] === '\\(' ? '\\)' : '\\\\]';
+                    const endMatch = content.indexOf(endChar, match.index + 2);
+                    
+                    if (endMatch > -1) {
+                        const latexContent = content.slice(match.index, endMatch + 2);
+                        parts.push(latexContent);
+                        currentIndex = endMatch + 2;
+                        codeBlockRegex.lastIndex = currentIndex;
+                        continue;
+                    }
                 }
                 
                 const endMatch = content.indexOf('```', match.index + 3);
@@ -597,11 +621,15 @@
             }
 
             return parts.map(part => {
+                if (part.startsWith('\\(') || part.startsWith('\\[')) {
+                    const isDisplay = part.startsWith('\\[');
+                    return `<div class="${isDisplay ? 'math-display' : 'math-inline'}">${part}</div>`;
+                }
                 if (part.startsWith('```')) {
                     const match = part.match(/```(\w+)?\s*([\s\S]*?)```/s) || [];
                     const lang = (match[1] || 'text').trim();
                     const code = (match[2] || part.slice(3)).trim();
-                    return createCodeBlock(lang, escapeHtml(code));
+                    return createCodeBlock(lang, code); // Remove escapeHtml here
                 }
                 return `<div class="md-content">${formatMarkdown(part)}</div>`;
             }).join('');
@@ -609,45 +637,42 @@
 
         function createCodeBlock(lang, code) {
             return `<div class="code-container">
-                <div class="code-content">
-                    <pre class="language-${lang}"><code class="language-${lang}">${code}</code></pre>
-                    <button class="code-copy-btn">📋 Copy</button>
-                </div>
+                <pre class="language-${lang}"><code class="language-${lang}">${escapeHtml(code)}</code></pre>
+                <button class="code-copy-btn">📋 Copy</button>
             </div>`;
         }
 
         function handleCodeCopyButtons(container) {
             const copyButtons = container.querySelectorAll('.code-copy-btn');
             copyButtons.forEach(button => {
-                button.style.opacity = '0';
-                
-                const checkCode = () => {
-                    const codeContent = button.previousElementSibling?.querySelector('code');
-                    if (codeContent?.textContent.trim()) {
-                        button.style.opacity = '1';
-                        button.onclick = () => {
-                            const rawCode = unescapeHtml(codeContent.textContent);
-                            navigator.clipboard.writeText(rawCode);
-                            button.textContent = '✅ Copied!';
-                            setTimeout(() => button.textContent = '📋 Copy', 2000);
-                        };
-                    }
-                };
-                
-                checkCode();
-                const interval = setInterval(checkCode, 500);
-                setTimeout(() => clearInterval(interval), 5000);
+                const codeContent = button.previousElementSibling?.querySelector('code');
+                if (codeContent?.textContent.trim()) {
+                    button.style.opacity = '1';
+                    button.onclick = () => {
+                        const rawCode = unescapeHtml(codeContent.textContent);
+                        navigator.clipboard.writeText(rawCode);
+                        button.textContent = '✅ Copied!';
+                        setTimeout(() => button.textContent = '📋 Copy', 2000);
+                    };
+                }
             });
         }
 
-        // Event listeners
+        function renderLaTeX(element) {
+            if (typeof MathJax !== 'undefined') {
+                MathJax.typesetPromise([element]).catch(err => console.log('LaTeX error:', err));
+            }
+        }
+
         sendBtn.addEventListener('click', handleSend);
         interruptBtn.addEventListener('click', handleInterrupt);
-        promptInput.addEventListener('keypress', (e) => {
+        promptInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
             }
+            promptInput.style.height = 'auto';
+            promptInput.style.height = promptInput.scrollHeight + 'px';
         });
     </script>
 </body>
