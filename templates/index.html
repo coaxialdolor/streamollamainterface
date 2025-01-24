@@ -8,6 +8,28 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <style>
+        /* Add see-question button styling */
+        .see-question-btn {
+            position: absolute;
+            bottom: 0.5rem;
+            right: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            background: hsl(220 13% 30%);
+            color: hsl(0 0% 90%);
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+            border: none;
+        }
+
+        .chat-bubble:hover .see-question-btn {
+            opacity: 1;
+        }
+
+        /* Keep previous styles and add new button styling */
         :root {
             --question-color: 300 100% 50%;
             --answer-color: 162 73% 46%;
@@ -212,7 +234,6 @@
         let currentBubble = null;
         let controller = null;
 
-        // Initial greeting
         document.addEventListener('DOMContentLoaded', () => {
             appendMessage('Hello! How can I assist you today?', false);
         });
@@ -307,7 +328,7 @@
                 isUser ? 'user' : 'assistant'
             } p-4 rounded-xl max-w-[85%]`;
 
-            // Create copy button for ALL bubbles
+            // Copy button for all bubbles
             const bubbleCopyBtn = document.createElement('button');
             bubbleCopyBtn.className = 'bubble-copy-btn';
             bubbleCopyBtn.innerHTML = '📋 Copy';
@@ -322,7 +343,25 @@
                 });
             };
 
-            // Create content container
+            // "See question" button for assistant responses
+            let seeQuestionBtn = null;
+            if (!isUser) {
+                seeQuestionBtn = document.createElement('button');
+                seeQuestionBtn.className = 'see-question-btn';
+                seeQuestionBtn.textContent = 'See question';
+                seeQuestionBtn.onclick = () => {
+                    const assistantMessage = messageDiv;
+                    const questionMessage = assistantMessage.previousElementSibling;
+                    if (questionMessage && questionMessage.classList.contains('chat-end')) {
+                        questionMessage.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
+                    }
+                };
+            }
+
+            // Content container
             const contentWrapper = document.createElement('div');
             contentWrapper.className = 'message-content';
             
@@ -336,13 +375,14 @@
                 contentWrapper.textContent = content;
             }
 
-            // Add elements to DOM
+            // Assemble elements
             contentDiv.appendChild(contentWrapper);
             contentDiv.appendChild(bubbleCopyBtn);
+            if (seeQuestionBtn) contentDiv.appendChild(seeQuestionBtn);
             messageDiv.appendChild(contentDiv);
             chatContainer.appendChild(messageDiv);
 
-            // Handle code copy buttons
+            // Code copy handling
             if (!isUser) {
                 const copyButtons = contentDiv.querySelectorAll('.code-copy-btn');
                 copyButtons.forEach(button => {
