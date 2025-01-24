@@ -11,7 +11,25 @@
         :root {
             --question-color: 300 100% 50%;
             --answer-color: 162 73% 46%;
-            --streaming-color: 190 90% 50%;
+        }
+
+        @keyframes typing-dots {
+            0%, 20% { opacity: 0.2; }
+            40% { opacity: 1; }
+            60%, 100% { opacity: 0.2; }
+        }
+
+        .typing-dots span {
+            animation: typing-dots 1.4s infinite;
+            display: inline-block;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
         }
 
         .model-header {
@@ -21,6 +39,10 @@
             font-size: 0.9rem;
         }
         
+        .chat-bubble {
+            position: relative;
+        }
+        
         .chat-bubble.user {
             background-color: hsl(var(--question-color)/0.2);
             border: 1px solid hsl(var(--question-color)/0.3);
@@ -28,20 +50,54 @@
         }
         
         .chat-bubble.assistant {
-            background-color: hsl(var(--answer-color)/0.2);
-            border: 1px solid hsl(var(--answer-color)/0.3);
+            background-color: hsl(var(--answer-color)/0.15);
+            border: 1px solid hsl(var(--answer-color)/0.25);
             color: hsl(0 0% 90%);
         }
         
         .chat-bubble.streaming {
-            border: 2px solid hsl(var(--streaming-color)/0.5) !important;
-            animation: pulse-border 1.5s infinite;
+            background-color: hsl(var(--answer-color)/0.3) !important;
+            border: 2px solid hsl(0 0% 100%) !important;
         }
 
-        @keyframes pulse-border {
-            0% { border-color: hsl(var(--streaming-color)/0.3); }
-            50% { border-color: hsl(var(--streaming-color)/0.8); }
-            100% { border-color: hsl(var(--streaming-color)/0.3); }
+        .bubble-copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            background: hsl(220 13% 30%);
+            color: hsl(0 0% 90%);
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+            border: none;
+        }
+
+        .chat-bubble:hover .bubble-copy-btn {
+            opacity: 1;
+        }
+
+        .see-question-btn {
+            position: absolute;
+            bottom: 0.5rem;
+            right: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            background: hsl(220 13% 30%);
+            color: hsl(0 0% 90%);
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+            border: none;
+        }
+
+        .chat-bubble:hover .see-question-btn {
+            opacity: 1;
         }
 
         body {
@@ -195,6 +251,10 @@
         let currentBubble = null;
         let controller = null;
 
+        document.addEventListener('DOMContentLoaded', () => {
+            appendMessage('Hello! How can I assist you today?', false);
+        });
+
         function escapeHtml(unsafe) {
             return unsafe
                 .replace(/&/g, "&amp;")
@@ -228,28 +288,55 @@
         }
 
         function formatMessage(content) {
-            let parts = content.split(/(```[\s\S]*?```)/g);
-            
+            let parts = [];
+            let currentIndex = 0;
+            let codeBlockRegex = /```/g;
+            let match;
+
+            while ((match = codeBlockRegex.exec(content)) !== null) {
+                if (match.index > currentIndex) {
+                    parts.push(content.slice(currentIndex, match.index));
+                }
+                
+                const endMatch = content.indexOf('```', match.index + 3);
+                if (endMatch > -1) {
+                    const codeContent = content.slice(match.index, endMatch + 3);
+                    parts.push(codeContent);
+                    currentIndex = endMatch + 3;
+                    codeBlockRegex.lastIndex = currentIndex;
+                } else {
+                    const codeContent = content.slice(match.index);
+                    parts.push(codeContent);
+                    currentIndex = content.length;
+                    break;
+                }
+            }
+
+            if (currentIndex < content.length) {
+                parts.push(content.slice(currentIndex));
+            }
+
             return parts.map(part => {
                 if (part.startsWith('```')) {
-                    const match = part.match(/```(\w+)?\s*([\s\S]*?)```/);
-                    const lang = match[1] || 'text';
-                    const code = match[2].trim();
-                    const escapedCode = escapeHtml(code);
-                    
-                    return `<div class="code-container">
-                        <div class="code-content">
-                            <pre class="language-${lang}"><code class="language-${lang}">${escapedCode}</code></pre>
-                            <button class="code-copy-btn">📋 Copy</button>
-                        </div>
-                    </div>`;
-                } else {
-                    return `<div class="md-content">${formatMarkdown(part)}</div>`;
+                    const match = part.match(/```(\w+)?\s*([\s\S]*?)```/s) || [];
+                    const lang = (match[1] || 'text').trim();
+                    const code = (match[2] || part.slice(3)).trim();
+                    return createCodeBlock(lang, escapeHtml(code));
                 }
+                return `<div class="md-content">${formatMarkdown(part)}</div>`;
             }).join('');
         }
 
-        function appendMessage(content, isUser = false) {
+        function createCodeBlock(lang, code) {
+            return `<div class="code-container">
+                <div class="code-content">
+                    <pre class="language-${lang}"><code class="language-${lang}">${code}</code></pre>
+                    <button class="code-copy-btn">📋 Copy</button>
+                </div>
+            </div>`;
+        }
+
+        function appendMessage(content, isUser = false, isStreaming = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
             
@@ -257,30 +344,88 @@
             contentDiv.className = `chat-bubble relative ${
                 isUser ? 'user' : 'assistant'
             } p-4 rounded-xl max-w-[85%]`;
+
+            // Copy button for all bubbles
+            const bubbleCopyBtn = document.createElement('button');
+            bubbleCopyBtn.className = 'bubble-copy-btn';
+            bubbleCopyBtn.innerHTML = '📋 Copy';
+            bubbleCopyBtn.onclick = () => {
+                const textToCopy = isUser ? 
+                    content : 
+                    unescapeHtml(contentDiv.querySelector('.message-content')?.textContent || '');
+                
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    bubbleCopyBtn.textContent = '✅ Copied!';
+                    setTimeout(() => bubbleCopyBtn.textContent = '📋 Copy', 2000);
+                });
+            };
+
+            // "See question" button for assistant responses
+            let seeQuestionBtn = null;
+            if (!isUser) {
+                seeQuestionBtn = document.createElement('button');
+                seeQuestionBtn.className = 'see-question-btn';
+                seeQuestionBtn.textContent = 'See question';
+                seeQuestionBtn.onclick = () => {
+                    const assistantMessage = messageDiv;
+                    const questionMessage = assistantMessage.previousElementSibling;
+                    if (questionMessage && questionMessage.classList.contains('chat-end')) {
+                        questionMessage.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
+                    }
+                };
+            }
+
+            // Content container
+            const contentWrapper = document.createElement('div');
+            contentWrapper.className = 'message-content';
             
             if (!isUser) {
-                contentDiv.innerHTML = `
-                    <div class="model-header">deepseek-r1:14b says:</div>
+                contentWrapper.innerHTML = `
+                    <div class="model-header">
+                        deepseek-r1:14b says:
+                        ${isStreaming ? '<span class="typing-dots ml-1"><span>.</span><span>.</span><span>.</span></span>' : ''}
+                    </div>
                     ${formatMessage(content)}
                 `;
                 currentBubble = contentDiv;
             } else {
-                contentDiv.textContent = content;
+                contentWrapper.textContent = content;
             }
 
+            // Assemble elements
+            contentDiv.appendChild(contentWrapper);
+            contentDiv.appendChild(bubbleCopyBtn);
+            if (seeQuestionBtn) contentDiv.appendChild(seeQuestionBtn);
             messageDiv.appendChild(contentDiv);
             chatContainer.appendChild(messageDiv);
 
-            const copyButtons = contentDiv.querySelectorAll('.code-copy-btn');
-            copyButtons.forEach(button => {
-                const codeElement = button.previousElementSibling.querySelector('code');
-                button.addEventListener('click', () => {
-                    const rawCode = unescapeHtml(codeElement.textContent);
-                    navigator.clipboard.writeText(rawCode);
-                    button.textContent = '✅ Copied!';
-                    setTimeout(() => button.textContent = '📋 Copy', 2000);
+            // Code copy handling
+            if (!isUser) {
+                const copyButtons = contentDiv.querySelectorAll('.code-copy-btn');
+                copyButtons.forEach(button => {
+                    button.style.opacity = '0';
+                    
+                    const checkCode = () => {
+                        const codeContent = button.previousElementSibling?.querySelector('code');
+                        if (codeContent && codeContent.textContent.trim()) {
+                            button.style.opacity = '1';
+                            button.addEventListener('click', () => {
+                                const rawCode = unescapeHtml(codeContent.textContent);
+                                navigator.clipboard.writeText(rawCode);
+                                button.textContent = '✅ Copied!';
+                                setTimeout(() => button.textContent = '📋 Copy', 2000);
+                            });
+                        }
+                    };
+                    
+                    checkCode();
+                    const interval = setInterval(checkCode, 500);
+                    setTimeout(() => clearInterval(interval), 5000);
                 });
-            });
+            }
 
             Prism.highlightAllUnder(contentDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -299,7 +444,7 @@
             controller = new AbortController();
             
             appendMessage(prompt, true);
-            appendMessage('', false);
+            appendMessage('', false, true); // Start with streaming state
             currentBubble.classList.add('streaming');
 
             try {
@@ -328,29 +473,36 @@
                         try {
                             const data = JSON.parse(chunk.replace('data: ', ''));
                             assistantMessage += data.response;
-                            
+
                             requestAnimationFrame(() => {
-                                currentBubble.innerHTML = `
-                                    <div class="model-header">deepseek-r1:14b says:</div>
-                                    ${formatMessage(assistantMessage)}
-                                `;
-                                currentBubble.classList.add('streaming');
+                                const contentWrapper = currentBubble.querySelector('.message-content');
+                                if (contentWrapper) {
+                                    contentWrapper.innerHTML = `
+                                        <div class="model-header">
+                                            deepseek-r1:14b says:
+                                            <span class="typing-dots ml-1"><span>.</span><span>.</span><span>.</span></span>
+                                        </div>
+                                        ${formatMessage(assistantMessage)}
+                                    `;
+                                }
                                 
                                 const copyButtons = currentBubble.querySelectorAll('.code-copy-btn');
                                 copyButtons.forEach(button => {
-                                    const codeElement = button.previousElementSibling.querySelector('code');
-                                    button.addEventListener('click', () => {
-                                        const rawCode = unescapeHtml(codeElement.textContent);
-                                        navigator.clipboard.writeText(rawCode);
-                                        button.textContent = '✅ Copied!';
-                                        setTimeout(() => button.textContent = '📋 Copy', 2000);
-                                    });
+                                    const codeElement = button.previousElementSibling?.querySelector('code');
+                                    if (codeElement) {
+                                        button.onclick = () => {
+                                            const rawCode = unescapeHtml(codeElement.textContent);
+                                            navigator.clipboard.writeText(rawCode);
+                                            button.textContent = '✅ Copied!';
+                                            setTimeout(() => button.textContent = '📋 Copy', 2000);
+                                        };
+                                    }
                                 });
 
                                 Prism.highlightAllUnder(currentBubble);
                             });
                         } catch (e) {
-                            console.error('Error parsing chunk:', e);
+                            console.error('Error processing chunk:', e);
                         }
                     }
                 }
@@ -367,6 +519,7 @@
             } catch (error) {
                 if (error.name !== 'AbortError') {
                     console.error('Error:', error);
+                    appendMessage('An error occurred while generating the response.', false);
                 }
             } finally {
                 isGenerating = false;
@@ -375,6 +528,11 @@
                 controller = null;
                 promptInput.focus();
                 currentBubble.classList.remove('streaming');
+                // Remove typing dots
+                const header = currentBubble.querySelector('.model-header');
+                if (header) {
+                    header.innerHTML = 'deepseek-r1:14b says:';
+                }
             }
         }
 
@@ -385,6 +543,11 @@
                 isGenerating = false;
                 sendBtn.disabled = false;
                 interruptBtn.disabled = true;
+                // Remove typing dots on interrupt
+                const header = currentBubble.querySelector('.model-header');
+                if (header) {
+                    header.innerHTML = 'deepseek-r1:14b says:';
+                }
             }
         }
 

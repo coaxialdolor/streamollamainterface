@@ -8,31 +8,28 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <style>
-        /* Add see-question button styling */
-        .see-question-btn {
-            position: absolute;
-            bottom: 0.5rem;
-            right: 0.5rem;
-            padding: 0.25rem 0.75rem;
-            background: hsl(220 13% 30%);
-            color: hsl(0 0% 90%);
-            border-radius: 0.25rem;
-            font-size: 0.8rem;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.2s;
-            z-index: 10;
-            border: none;
-        }
-
-        .chat-bubble:hover .see-question-btn {
-            opacity: 1;
-        }
-
-        /* Keep previous styles and add new button styling */
         :root {
             --question-color: 300 100% 50%;
             --answer-color: 162 73% 46%;
+        }
+
+        @keyframes typing-dots {
+            0%, 20% { opacity: 0.2; }
+            40% { opacity: 1; }
+            60%, 100% { opacity: 0.2; }
+        }
+
+        .typing-dots span {
+            animation: typing-dots 1.4s infinite;
+            display: inline-block;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
         }
 
         .model-header {
@@ -83,6 +80,26 @@
             opacity: 1;
         }
 
+        .see-question-btn {
+            position: absolute;
+            bottom: 0.5rem;
+            right: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            background: hsl(220 13% 30%);
+            color: hsl(0 0% 90%);
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+            border: none;
+        }
+
+        .chat-bubble:hover .see-question-btn {
+            opacity: 1;
+        }
+
         body {
             background: hsl(220 15% 16%);
         }
@@ -95,11 +112,18 @@
         .input-bordered {
             background-color: hsl(220 13% 20%);
             border-color: hsl(220 13% 30%);
-            color: white;
+            color: white !important;
+            -webkit-text-fill-color: white !important;
         }
 
         .input::placeholder {
             color: hsl(220 13% 60%);
+        }
+
+        /* Autofill overrides */
+        .input-bordered:-webkit-autofill {
+            -webkit-text-fill-color: white !important;
+            -webkit-box-shadow: 0 0 0px 1000px hsl(220 13% 20%) inset;
         }
 
         .code-container {
@@ -226,14 +250,36 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
     <script>
-        const chatContainer = document.getElementById('chat-container');
-        const promptInput = document.getElementById('prompt-input');
-        const sendBtn = document.getElementById('send-btn');
-        const interruptBtn = document.getElementById('interrupt-btn');
-        let isGenerating = false;
-        let currentBubble = null;
-        let controller = null;
+            const chatContainer = document.getElementById('chat-container');
+            const promptInput = document.getElementById('prompt-input');
+            const sendBtn = document.getElementById('send-btn');
+            const interruptBtn = document.getElementById('interrupt-btn');
+            let isGenerating = false;
+            let currentBubble = null;
+            let controller = null;
+            let animationInterval = null;
 
+            function startTypingAnimation(element) {
+                const dots = element.querySelectorAll('.typing-dots span');
+                let counter = 0;
+            
+                if (animationInterval) clearInterval(animationInterval);
+            
+                animationInterval = setInterval(() => {
+                    dots.forEach((dot, index) => {
+                        const wavePosition = (counter + index) % 4;
+                        dot.style.opacity = wavePosition < 2 ? '1' : '0.4';
+                    });
+                    counter = (counter + 1) % 4;
+                }, 300);
+            }
+
+            function stopTypingAnimation() {
+                if (animationInterval) {
+                    clearInterval(animationInterval);
+                    animationInterval = null;
+                }
+            }
         document.addEventListener('DOMContentLoaded', () => {
             appendMessage('Hello! How can I assist you today?', false);
         });
@@ -319,7 +365,7 @@
             </div>`;
         }
 
-        function appendMessage(content, isUser = false) {
+        function appendMessage(content, isUser = false, isStreaming = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `chat ${isUser ? 'chat-end' : 'chat-start'}`;
             
@@ -328,7 +374,6 @@
                 isUser ? 'user' : 'assistant'
             } p-4 rounded-xl max-w-[85%]`;
 
-            // Copy button for all bubbles
             const bubbleCopyBtn = document.createElement('button');
             bubbleCopyBtn.className = 'bubble-copy-btn';
             bubbleCopyBtn.innerHTML = '📋 Copy';
@@ -343,7 +388,6 @@
                 });
             };
 
-            // "See question" button for assistant responses
             let seeQuestionBtn = null;
             if (!isUser) {
                 seeQuestionBtn = document.createElement('button');
@@ -361,28 +405,35 @@
                 };
             }
 
-            // Content container
             const contentWrapper = document.createElement('div');
             contentWrapper.className = 'message-content';
             
             if (!isUser) {
                 contentWrapper.innerHTML = `
-                    <div class="model-header">deepseek-r1:14b says:</div>
+                    <div class="model-header">
+                        deepseek-r1:14b says:
+                        <span class="typing-dots ml-1">
+                            <span>.</span><span>.</span><span>.</span>
+                        </span>
+                    </div>
                     ${formatMessage(content)}
                 `;
+                
+                if (isStreaming) {
+                    const typingElement = contentWrapper.querySelector('.typing-dots');
+                    startTypingAnimation(typingElement);
+                }
                 currentBubble = contentDiv;
             } else {
                 contentWrapper.textContent = content;
             }
 
-            // Assemble elements
             contentDiv.appendChild(contentWrapper);
             contentDiv.appendChild(bubbleCopyBtn);
             if (seeQuestionBtn) contentDiv.appendChild(seeQuestionBtn);
             messageDiv.appendChild(contentDiv);
             chatContainer.appendChild(messageDiv);
 
-            // Code copy handling
             if (!isUser) {
                 const copyButtons = contentDiv.querySelectorAll('.code-copy-btn');
                 copyButtons.forEach(button => {
@@ -410,7 +461,6 @@
             Prism.highlightAllUnder(contentDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
-
         async function handleSend() {
             if (isGenerating) return;
             
@@ -424,7 +474,7 @@
             controller = new AbortController();
             
             appendMessage(prompt, true);
-            appendMessage('', false);
+            appendMessage('', false, true);
             currentBubble.classList.add('streaming');
 
             try {
@@ -439,6 +489,9 @@
                 const decoder = new TextDecoder();
                 let buffer = '';
                 let assistantMessage = '';
+
+                let typingElement = currentBubble.querySelector('.typing-dots');
+                startTypingAnimation(typingElement);
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -457,12 +510,18 @@
                             requestAnimationFrame(() => {
                                 const contentWrapper = currentBubble.querySelector('.message-content');
                                 if (contentWrapper) {
+                                    const existingDots = contentWrapper.querySelector('.typing-dots');
                                     contentWrapper.innerHTML = `
-                                        <div class="model-header">deepseek-r1:14b says:</div>
+                                        <div class="model-header">
+                                            deepseek-r1:14b says:
+                                            ${existingDots.outerHTML}
+                                        </div>
                                         ${formatMessage(assistantMessage)}
                                     `;
+
+                                    typingElement = contentWrapper.querySelector('.typing-dots');
+                                    startTypingAnimation(typingElement);
                                 }
-                                
                                 const copyButtons = currentBubble.querySelectorAll('.code-copy-btn');
                                 copyButtons.forEach(button => {
                                     const codeElement = button.previousElementSibling?.querySelector('code');
@@ -505,19 +564,28 @@
                 controller = null;
                 promptInput.focus();
                 currentBubble.classList.remove('streaming');
+                const header = currentBubble.querySelector('.model-header');
+                if (header) {
+                    header.innerHTML = 'deepseek-r1:14b says:';
+                }
+                stopTypingAnimation();
             }
         }
 
         function handleInterrupt() {
+            stopTypingAnimation();
             if (controller) {
                 controller.abort();
                 currentBubble.classList.remove('streaming');
                 isGenerating = false;
                 sendBtn.disabled = false;
                 interruptBtn.disabled = true;
+                const header = currentBubble.querySelector('.model-header');
+                if (header) {
+                    header.innerHTML = 'deepseek-r1:14b says:';
+                }
             }
         }
-
         sendBtn.addEventListener('click', handleSend);
         interruptBtn.addEventListener('click', handleInterrupt);
         promptInput.addEventListener('keypress', (e) => {
