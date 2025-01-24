@@ -1,0 +1,58 @@
+# Installation Instructions for Streamollama Interface
+
+## Prerequisites
+- Python 3.8 or higher
+- Ollama installed and running locally (http://localhost:11434)
+
+## Option 1: Installation with Virtual Environment (Recommended)
+1. Clone the repository:
+   git clone https://github.com/coaxialdolor/streamollamainterface.git
+   cd streamollamainterface
+
+2. Create and activate virtual environment:
+   python -m venv venv
+   # Linux/Mac:
+   source venv/bin/activate
+   # Windows:
+   .\venv\Scripts\activate
+
+3. Install dependencies:
+   pip install -r requirements.txt
+
+4. Run the application:
+   # Local access only:
+   python app.py
+   # Network accessible:
+   flask run --host=0.0.0.0 --port=5001
+
+## Option 2: Direct Installation (Without Virtual Environment)
+1. Clone and enter repository:
+   git clone https://github.com/coaxialdolor/streamollamainterface.git
+   cd streamollamainterface
+
+2. Install dependencies:
+   pip install -r requirements.txt  # or pip3
+
+3. Run the application:
+   # Local access only:
+   python app.py
+   # Network accessible:
+   flask run --host=0.0.0.0 --port=5001
+
+## Access the Application
+- Local access: http://localhost:5001
+- Network access: http://YOUR_IP_ADDRESS:5001
+
+## Notes
+- Ensure Ollama is running before starting
+- Default port: 5001
+- --host=0.0.0.0 makes the app network-accessible
+- Production recommendations:
+  - Add authentication
+  - Use HTTPS
+  - Deploy with WSGI server (e.g., Gunicorn)
+
+## requirements.txt
+flask>=2.0.0
+requests>=2.25.1
+python-dotenv>=0.19.0
