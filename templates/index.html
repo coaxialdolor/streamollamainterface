@@ -307,14 +307,14 @@
                 isUser ? 'user' : 'assistant'
             } p-4 rounded-xl max-w-[85%]`;
 
-            // Create copy button for all bubbles
+            // Create copy button for ALL bubbles
             const bubbleCopyBtn = document.createElement('button');
             bubbleCopyBtn.className = 'bubble-copy-btn';
             bubbleCopyBtn.innerHTML = '📋 Copy';
             bubbleCopyBtn.onclick = () => {
                 const textToCopy = isUser ? 
                     content : 
-                    unescapeHtml(contentDiv.querySelector('.md-content')?.textContent || '');
+                    unescapeHtml(contentDiv.querySelector('.message-content')?.textContent || '');
                 
                 navigator.clipboard.writeText(textToCopy).then(() => {
                     bubbleCopyBtn.textContent = '✅ Copied!';
@@ -322,16 +322,22 @@
                 });
             };
 
+            // Create content container
+            const contentWrapper = document.createElement('div');
+            contentWrapper.className = 'message-content';
+            
             if (!isUser) {
-                contentDiv.innerHTML = `
+                contentWrapper.innerHTML = `
                     <div class="model-header">deepseek-r1:14b says:</div>
                     ${formatMessage(content)}
                 `;
                 currentBubble = contentDiv;
             } else {
-                contentDiv.textContent = content;
+                contentWrapper.textContent = content;
             }
 
+            // Add elements to DOM
+            contentDiv.appendChild(contentWrapper);
             contentDiv.appendChild(bubbleCopyBtn);
             messageDiv.appendChild(contentDiv);
             chatContainer.appendChild(messageDiv);
@@ -409,20 +415,25 @@
                             assistantMessage += data.response;
 
                             requestAnimationFrame(() => {
-                                currentBubble.innerHTML = `
-                                    <div class="model-header">deepseek-r1:14b says:</div>
-                                    ${formatMessage(assistantMessage)}
-                                `;
+                                const contentWrapper = currentBubble.querySelector('.message-content');
+                                if (contentWrapper) {
+                                    contentWrapper.innerHTML = `
+                                        <div class="model-header">deepseek-r1:14b says:</div>
+                                        ${formatMessage(assistantMessage)}
+                                    `;
+                                }
                                 
                                 const copyButtons = currentBubble.querySelectorAll('.code-copy-btn');
                                 copyButtons.forEach(button => {
-                                    const codeElement = button.previousElementSibling.querySelector('code');
-                                    button.onclick = () => {
-                                        const rawCode = unescapeHtml(codeElement.textContent);
-                                        navigator.clipboard.writeText(rawCode);
-                                        button.textContent = '✅ Copied!';
-                                        setTimeout(() => button.textContent = '📋 Copy', 2000);
-                                    };
+                                    const codeElement = button.previousElementSibling?.querySelector('code');
+                                    if (codeElement) {
+                                        button.onclick = () => {
+                                            const rawCode = unescapeHtml(codeElement.textContent);
+                                            navigator.clipboard.writeText(rawCode);
+                                            button.textContent = '✅ Copied!';
+                                            setTimeout(() => button.textContent = '📋 Copy', 2000);
+                                        };
+                                    }
                                 });
 
                                 Prism.highlightAllUnder(currentBubble);
