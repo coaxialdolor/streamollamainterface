@@ -23,11 +23,10 @@
 
         body {
             min-height: 100vh;
-            min-height: -webkit-fill-available; /* iOS viewport fix */
+            min-height: -webkit-fill-available;
             background: hsl(220 15% 16%);
         }
 
-        /* Add this class */
         .page-container {
             min-height: 100vh;
             min-height: -webkit-fill-available;
@@ -43,14 +42,6 @@
         .typing-dots span {
             animation: typing-dots 1.4s infinite;
             display: inline-block;
-        }
-
-        .typing-dots span:nth-child(2) {
-            animation-delay: 0.2s;
-        }
-
-        .typing-dots span:nth-child(3) {
-            animation-delay: 0.4s;
         }
 
         .model-header {
@@ -251,14 +242,30 @@
             padding: 0.2rem 0.4rem;
             border-radius: 0.25rem;
         }
+
+        .text-gray-400 {
+            color: hsl(220 13% 60%);
+        }
+
+        .btn-sm {
+            padding: 0.25rem 0.75rem;
+            font-size: 0.875rem;
+        }
     </style>
 </head>
 <body class="h-full">
     <div class="page-container">
         <div class="container mx-auto max-w-4xl p-4 min-h-full flex flex-col">
-            <div class="text-3xl font-bold text-[hsl(var(--answer-color))] mb-8">Local streaming chat</div>
-            
+            <div class="flex justify-between items-center mb-4">
+                <div class="text-3xl font-bold text-[hsl(var(--answer-color))]">Local streaming chat</div>
+                <div class="flex gap-2">
+                    <button id="restart-btn" class="btn btn-sm btn-secondary">↻ Restart</button>
+                    <button id="shutdown-btn" class="btn btn-sm btn-error">⏏️ Shutdown</button>
+                </div>
+            </div>
+
             <div id="chat-container" class="flex-1 rounded-lg p-4 overflow-y-auto space-y-4 shadow-lg pb-[calc(7rem+env(safe-area-inset-bottom))]"></div>
+            
             <div class="flex gap-2 sticky bottom-0 bg-[hsl(220_13%_18%)] pt-4 pb-[env(safe-area-inset-bottom)]">
                 <div class="join flex-1">
                     <textarea 
@@ -280,12 +287,50 @@
         const promptInput = document.getElementById('prompt-input');
         const sendBtn = document.getElementById('send-btn');
         const interruptBtn = document.getElementById('interrupt-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const shutdownBtn = document.getElementById('shutdown-btn');
+        
         let isGenerating = false;
         let currentBubble = null;
         let controller = null;
         let animationInterval = null;
         let isFirstInteraction = true;
 
+        // Server Control Functions
+        async function handleShutdown() {
+            try {
+                const response = await fetch('/shutdown', { method: 'POST' });
+                const data = await response.json();
+                if (data.status === 'shutdown') {
+                    showSystemMessage('Server has been shut down. You need to manually restart it.');
+                }
+            } catch (error) {
+                showSystemMessage('Shutdown failed: ' + error.message);
+            }
+        }
+
+        async function handleRestart() {
+            try {
+                const response = await fetch('/restart', { method: 'POST' });
+                const data = await response.json();
+                if (data.status === 'restarting') {
+                    showSystemMessage('Server is restarting... Please wait a moment.');
+                    setTimeout(() => window.location.reload(), 2000);
+                }
+            } catch (error) {
+                showSystemMessage('Restart failed: ' + error.message);
+            }
+        }
+
+        function showSystemMessage(text) {
+            const systemMsg = document.createElement('div');
+            systemMsg.className = 'text-center text-sm text-gray-400 my-2';
+            systemMsg.textContent = text;
+            chatContainer.appendChild(systemMsg);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Original Chat Functions
         document.addEventListener('DOMContentLoaded', () => {
             simulateInitialGreeting();
         });
@@ -474,6 +519,7 @@
                 animationInterval = null;
             }
         }
+
         function cleanupAfterGeneration() {
             isGenerating = false;
             sendBtn.classList.remove('hidden');
@@ -485,7 +531,6 @@
             currentBubble?.classList.remove('streaming');
             stopTypingAnimation();
         }
-        
 
         async function handleSend() {
             if (isGenerating) return;
@@ -553,6 +598,7 @@
                 isFirstInteraction = false;
             }
         }
+
         function handleInterrupt() {
             stopTypingAnimation();
             if (controller) {
@@ -682,8 +728,12 @@
             }
         }
 
+        // Event Listeners
+        restartBtn.addEventListener('click', handleRestart);
+        shutdownBtn.addEventListener('click', handleShutdown);
         sendBtn.addEventListener('click', handleSend);
         interruptBtn.addEventListener('click', handleInterrupt);
+        
         promptInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();

@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, Response, jsonify
 import requests
 import json
 import os
+import sys
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -44,6 +45,26 @@ def interrupt():
     global is_streaming
     is_streaming = False
     return jsonify({"status": "interrupted"})
+
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    shutdown_func = request.environ.get('werkzeug.server.shutdown')
+    if shutdown_func:
+        shutdown_func()
+    return jsonify({"status": "shutdown"})
+
+@app.route('/restart', methods=['POST'])
+def restart():
+    def restart_server():
+        python = sys.executable
+        os.execl(python, python, *sys.argv)
+    
+    try:
+        restart_server()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+    
+    return jsonify({"status": "restarting"})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
